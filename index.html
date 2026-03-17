@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Firebase LINE風チャット</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+  <style>
+    /* LINE風のデザイン */
+    body { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; background: #7494c0; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+    #chat { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { background: #fff; padding: 8px 12px; border-radius: 15px; max-width: 80%; width: fit-content; align-self: flex-start; position: relative; font-size: 15px; line-height: 1.4; }
+    /* 自分のメッセージは右側に緑色で表示 */
+    .my-msg { background: #8de055; align-self: flex-end; }
+    .input-area { background: #fff; padding: 10px; display: flex; align-items: center; border-top: 1px solid #ddd; }
+    input { flex: 1; border: none; background: #f0f0f0; border-radius: 20px; padding: 10px 15px; font-size: 16px; outline: none; }
+    button { background: none; border: none; color: #00c300; font-size: 24px; margin-left: 10px; cursor: pointer; padding: 0 5px; }
+    #status { font-size: 10px; color: white; text-align: center; background: rgba(0,0,0,0.2); padding: 2px; }
+  </style>
+</head>
+<body>
+  <div id="status">接続中...</div>
+  <div id="chat"></div>
+  <div class="input-area">
+    <input type="text" id="msgInput" placeholder="メッセージを入力..." autocomplete="off">
+    <button id="sendBtn">➤</button>
+  </div>
+
+  <script>
+    // 1. Firebaseの設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyAfjTWeL71syzo7SNpym7ATcbrq6i7JfXQ",
+      authDomain: "game-server-df061.firebaseapp.com",
+      databaseURL: "https://game-server-df061-default-rtdb.firebaseio.com",
+      projectId: "game-server-df061",
+      storageBucket: "game-server-df061.firebasestorage.app",
+      messagingSenderId: "475396427934",
+      appId: "1:475396427934:web:5106a6210aa51e3b8f6b8f"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const messaging = firebase.messaging();
+
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusEl = document.getElementById('status');
+
+    // 2. 通知の設定（VAPID鍵をここに貼り付け）
+    const VAPID_KEY = "BCSnrTtECFNzyiSKadGC4jW_FLkrz-HsR3nkFeOdWC6fcthPzowSIIcinsq02LUqqwMNtOTacNx1ZLGmoR3yCFU";
+
+    // 通知許可の取得
+    messaging.requestPermission().then(() => {
+      return messaging.getToken({ vapidKey: VAPID_KEY });
+    }).then(token => {
+      console.log("通知用トークン取得成功");
+      statusEl.innerText = "オンライン（通知有効）";
+    }).catch(err => {
+      console.log("通知エラー:", err);
+      statusEl.innerText = "オンライン（通知無効）";
+    });
+
+    // 3. メッセージ送信
+    function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      
+      // DBに保存
+      db.ref('messages').push({
+        text: text,
+        time: Date.now(),
+        sender: "user_" + navigator.userAgent.length // 簡易的なユーザー識別
+      });
+      // 3. メッセージ送信（修正版）
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  
+  // メッセージをDBに保存
+  db.ref('messages').push({
+    text: text,
+    time: Date.now(),
+    sender: "user_" + navigator.userAgent.length
+  });
+
+  // --- ここから通知を飛ばす処理を追加 ---
+  // 本来はサーバーでやる処理ですが、テスト用にJSから実行します
+  // ※この方法はサーバーキーの管理に注意が必要ですが、個人開発の練習には最適です
+  fetch('https://fcm.googleapis.com/fcm/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'key=BCSnrTtECFNzyiSKadGC4jW_FLkrz-HsR3nkFeOdWC6fcthPzowSIIcinsq02LUqqwMNtOTacNx1ZLGmoR3yCFU' // ←あとで説明します！
+    },
+    body: JSON.stringify({
+      "to": "/topics/all_users", // 全員に送る設定
+      "notification": {
+        "title": "新しいメッセージ",
+        "body": text,
+        "click_action": window.location.href
+      }
+    })
+  });
+  // ------------------------------------
+
+  inputEl.value = "";
+}
+
+    sendBtn.onclick = sendMessage;
+    inputEl.onkeypress = (e) => { if(e.key === 'Enter') sendMessage(); };
+
+    // 4. メッセージ受信表示
+    db.ref('messages').limitToLast(50).on('child_added', (snap) => {
+      const data = snap.val();
+      const div = document.createElement('div');
+      div.className = 'msg';
+      // 簡易的に自分のメッセージか判定（本来はログイン機能が必要）
+      if (data.sender === "user_" + navigator.userAgent.length) {
+        div.classList.add('my-msg');
+      }
+      div.innerText = data.text;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight; // 自動スクロール
+    });
+  </script>
+</body>
+</html>
