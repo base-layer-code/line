@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord通知付きチャット</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        #chat-box { background: white; height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
+        .msg { margin-bottom: 8px; padding: 8px; border-radius: 5px; background: #e7f3ff; }
+        input { width: 70%; padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; border-radius: 5px; background: #0084ff; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h2>マイチャットルーム</h2>
+    <div id="chat-box"></div>
+    <input type="text" id="msgInput" placeholder="メッセージを入力...">
+    <button onclick="sendMessage()">送信</button>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <script>
+        // --- 設定1：Firebaseの設定（自分のものに書き換えてね） ---
+        const firebaseConfig = {
+            databaseURL: "https://game-server-df061-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // --- 設定2：DiscordのURL（ここにコピーしたURLを貼る！） ---
+        const DISCORD_WEBHOOK_URL = "ここにコピーしたDiscordのURLを貼り付ける";
+
+        // メッセージを表示する処理
+        db.ref('messages').on('child_added', (snap) => {
+            const data = snap.val();
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerText = data.text;
+            document.getElementById('chat-box').appendChild(div);
+            document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight;
+        });
+
+        // 送信処理
+        async function sendMessage() {
+            const input = document.getElementById('msgInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            // 1. Firebaseに保存
+            await db.ref('messages').push({
+                text: text,
+                time: Date.now()
+            });
+
+            // 2. Discordに通知を飛ばす
+            if (DISCORD_WEBHOOK_URL !== "https://discord.com/api/webhooks/1483384842447224884/yvR1-Y5EHhcVFIIEjpXturRwKVYgerG6x1PXEM_vOpNAIRdSmLzAwEZwYuqKORHO5G3r") {
+                fetch(DISCORD_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        "content": "🔔 **チャットに新着！**\n" + text
+                    })
+                });
+            }
+
+            input.value = "";
+        }
+    </script>
+</body>
+</html>
