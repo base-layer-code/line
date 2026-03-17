@@ -73,9 +73,40 @@
         time: Date.now(),
         sender: "user_" + navigator.userAgent.length // 簡易的なユーザー識別
       });
-      
-      inputEl.value = "";
-    }
+      // 3. メッセージ送信（修正版）
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  
+  // メッセージをDBに保存
+  db.ref('messages').push({
+    text: text,
+    time: Date.now(),
+    sender: "user_" + navigator.userAgent.length
+  });
+
+  // --- ここから通知を飛ばす処理を追加 ---
+  // 本来はサーバーでやる処理ですが、テスト用にJSから実行します
+  // ※この方法はサーバーキーの管理に注意が必要ですが、個人開発の練習には最適です
+  fetch('https://fcm.googleapis.com/fcm/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'key=あなたのサーバーキー' // ←あとで説明します！
+    },
+    body: JSON.stringify({
+      "to": "/topics/all_users", // 全員に送る設定
+      "notification": {
+        "title": "新しいメッセージ",
+        "body": text,
+        "click_action": window.location.href
+      }
+    })
+  });
+  // ------------------------------------
+
+  inputEl.value = "";
+}
 
     sendBtn.onclick = sendMessage;
     inputEl.onkeypress = (e) => { if(e.key === 'Enter') sendMessage(); };
