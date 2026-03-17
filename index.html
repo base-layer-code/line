@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最強通知チャット</title>
+    <style>
+        body { text-align: center; padding: 40px 20px; font-family: sans-serif; background: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .btn { padding: 20px; font-size: 18px; border-radius: 12px; border: none; cursor: pointer; width: 100%; margin: 10px 0; font-weight: bold; }
+        .btn-setup { background: #007aff; color: white; }
+        .btn-call { background: #ff3b30; color: white; height: 100px; font-size: 24px; }
+        #status { margin-top: 15px; font-size: 14px; color: #555; line-height: 1.5; }
+        .step { text-align: left; background: #fff9db; padding: 10px; border-radius: 10px; font-size: 13px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🚨 呼び出しパネル</h2>
+
+        <div class="step">
+            <strong>【設定手順】</strong><br>
+            1. 共有ボタンから<strong>「ホーム画面に追加」</strong>する<br>
+            2. 追加されたアイコンから開き直す<br>
+            3. 下の青いボタンで<strong>通知を許可</strong>する
+        </div>
+
+        <button class="btn btn-setup" onclick="enableNotification()">1. 通知を有効にする</button>
+        
+        <hr>
+
+        <button class="btn btn-call" onclick="sendSignal()">2. 全員を呼ぶ！<br>(0.5秒連打)</button>
+
+        <div id="status">準備中...</div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = { databaseURL: "https://game-server-df061-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const bell = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+
+        // --- 1. 通知の許可をもらう関数 ---
+        async function enableNotification() {
+            if (!("Notification" in window)) {
+                alert("このブラウザは通知に対応していません。Safariで開いていますか？");
+                return;
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+                await navigator.serviceWorker.register('sw.js');
+                document.getElementById('status').innerText = "✅ 通知OK！\n別タブやホーム画面にいても届きます。";
+                bell.play().catch(()=>{}); // 許可ついでに音もロード
+            } else {
+                alert("通知が拒否されました。設定アプリから許可してください。");
+            }
+        }
+
+        // --- 2. Firebaseを監視して通知を出す ---
+        db.ref('emergency_mode').on('value', (snap) => {
+            if (snap.val() === true) {
+                // 通知を出す
+                if (Notification.permission === "granted") {
+                    navigator.serviceWorker.ready.then(registration => {
+                        registration.showNotification("🚨 呼び出し中！", {
+                            body: "相手があなたを呼んでいます！",
+                            tag: "call",
+                            renotify: true
+                        });
+                    });
+                }
+                // 音とタブ点滅（0.5秒間隔）
+                startAlert();
+            } else {
+                stopAlert();
+            }
+        });
+
+        let alertInterval = null;
+        function startAlert() {
+            if (alertInterval) return;
+            alertInterval = setInterval(() => {
+                bell.currentTime = 0;
+                bell.play().catch(()=>{});
+                document.title = document.title === "🚨🚨🚨" ? "呼び出し" : "🚨🚨🚨";
+            }, 500);
+        }
+
+        function stopAlert() {
+            clearInterval(alertInterval);
+            alertInterval = null;
+            document.title = "待機中";
+        }
+
+        // --- 3. 送信 ---
+        async function sendSignal() {
+            await db.ref('emergency_mode').set(true);
+            // 5秒後に自動停止（通知が無限に出ないように）
+            setTimeout(() => db.ref('emergency_mode').set(false), 5000);
+        }
+    </script>
+</body>
+</html>
